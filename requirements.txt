@@ -1,4 +1,7 @@
 fastapi
 uvicorn
+gunicorn
+numpy
 scikit-learn
 joblib
+jinja2
