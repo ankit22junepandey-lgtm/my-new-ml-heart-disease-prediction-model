@@ -1,46 +1,38 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+# app.py
+from flask import Flask, request, jsonify
 import joblib
+import traceback
 
-# Load the saved models + vectorizer
-bundle = joblib.load("news_models.pkl")
-vectorizer = bundle["vectorizer"]
-LR = bundle["LR"]
-DT = bundle["DT"]
-GB = bundle["GB"]
-RF = bundle["RF"]
+app = Flask(__name__)
 
-# FastAPI app
-app = FastAPI(title="Fake News Detection API")
+# Load model on startup
+MODEL_PATH = "model.joblib"
+model = joblib.load(MODEL_PATH)
 
-# Input schema
-class NewsInput(BaseModel):
-    text: str
+@app.route("/")
+def index():
+    return {"status": "ok", "msg": "Model server running"}
 
-# Output label function
-def output_label(n):
-    return "✅ Real News" if n == 1 else "❌ Fake News"
+@app.route("/predict/", methods=["POST"])
+def predict():
+    try:
+        data = request.get_json(force=True)
+        # Example expects: {"title": "...", "text": "..."}
+        text = (data.get("title","") + " " + data.get("text","")).strip()
+        # Preprocess the text exactly like during training:
+        # e.g., vectorize = joblib.load("vectorizer.joblib")
+        # X = vectorize.transform([text])
+        # pred = model.predict(X)[0]
+        # For demonstration, assume model accepts raw text:
+        pred = model.predict([text])[0]
+        # If you have probabilities:
+        prob = None
+        if hasattr(model, "predict_proba"):
+            prob = model.predict_proba([text]).max()
+        return jsonify({"prediction": str(pred), "confidence": float(prob) if prob is not None else None})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
-# Root endpoint
-@app.get("/")
-def home():
-    return {"message": "Welcome to Fake News Detection API! Use /predict to test."}
-
-# Prediction endpoint
-@app.post("/predict/")
-def predict(news: NewsInput):
-    # Vectorize input text
-    new_xv_test = vectorizer.transform([news.text])
-
-    # Predictions
-    pred_LR = LR.predict(new_xv_test)[0]
-    pred_DT = DT.predict(new_xv_test)[0]
-    pred_GB = GB.predict(new_xv_test)[0]
-    pred_RF = RF.predict(new_xv_test)[0]
-
-    return {
-        "Logistic Regression": output_label(pred_LR),
-        "Decision Tree": output_label(pred_DT),
-        "Gradient Boosting": output_label(pred_GB),
-        "Random Forest": output_label(pred_RF)
-    }
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
